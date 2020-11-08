@@ -1,42 +1,42 @@
-import sklearn
 import numpy as np
-from sklearn.linear_model import Perceptron
 import pandas
-from sklearn.model_selection import KFold, GridSearchCV
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score, \
+    precision_recall_curve
 
-from sklearn import datasets
+df = pandas.read_csv("classification.csv")
+print(df)
 
-newsgroups = datasets.fetch_20newsgroups(
-                    subset='all',
-                    categories=['alt.atheism', 'sci.space']
-             )
+TP = df[(df["pred"] == 1) & (df["true"] == 1)]
+FP = df[(df["pred"] == 1) & (df["true"] == 0)]
+FN = df[(df["pred"] == 0) & (df["true"] == 1)]
+TN = df[(df["pred"] == 0) & (df["true"] == 0)]
 
-X_train = newsgroups.data
-y_train = newsgroups.target
+print(len(TP))
+print(len(FP))
+print(len(FN))
+print(len(TN))
 
-vectorizer = sklearn.feature_extraction.text.TfidfVectorizer()
-X_transformed = vectorizer.fit_transform(X_train)
+accuracy = accuracy_score(df["true"], df["pred"])
+precision = precision_score(df["true"], df["pred"])
+recall = recall_score(df["true"], df["pred"])
+f1 = f1_score(df["true"], df["pred"])
 
+print(accuracy)
+print(precision)
+print(recall)
+print(f1)
 
-cv = KFold(n_splits=5, shuffle=True, random_state=241)
-grid = {"C": np.power(10.0, np.arange(-5, 6))}
+df = pandas.read_csv("scores.csv")
+print(df)
 
-clf = sklearn.svm.SVC(random_state=241, kernel='linear')
-gs = GridSearchCV(clf, grid, scoring="accuracy", cv=cv, verbose=1, n_jobs=-1)
+clf_names = df.columns[1:]
+scores = pandas.Series([roc_auc_score(df["true"], df[clf]) for clf in clf_names], index=clf_names)
 
-gs.fit(X_transformed, y_train)
-C = gs.best_params_.get('C')
-print(C)
+print(scores.sort_values(ascending=False).index[0])
 
-clf = sklearn.svm.SVC(random_state=241, kernel='linear', C=C)
-clf.fit(X_transformed, y_train)
+pr_scores = []
+for clf in clf_names:
+    pr_curve = precision_recall_curve(df["true"], df[clf])
+    pr_scores.append(pr_curve[0][pr_curve[1] >= 0.7].max())
 
-words = np.array(vectorizer.get_feature_names())
-word_weights = pandas.Series(clf.coef_.data, index=words[clf.coef_.indices], name="weight")
-word_weights.index.name = "word"
-
-top_words = word_weights.abs().sort_values(ascending=False).head(10)
-print(top_words)
-
-
+print(clf_names[np.argmax(pr_scores)])
