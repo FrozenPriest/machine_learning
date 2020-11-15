@@ -1,42 +1,43 @@
 import numpy as np
+import scipy
 import pandas
+from sklearn.feature_extraction import DictVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import Ridge
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score, \
     precision_recall_curve
 
-df = pandas.read_csv("classification.csv")
-print(df)
 
-TP = df[(df["pred"] == 1) & (df["true"] == 1)]
-FP = df[(df["pred"] == 1) & (df["true"] == 0)]
-FN = df[(df["pred"] == 0) & (df["true"] == 1)]
-TN = df[(df["pred"] == 0) & (df["true"] == 0)]
+def text_transform(text: pandas.Series) -> pandas.Series:
+    return text.str.lower().replace("[^a-zA-Z0-9]", " ", regex=True)
 
-print(len(TP))
-print(len(FP))
-print(len(FN))
-print(len(TN))
 
-accuracy = accuracy_score(df["true"], df["pred"])
-precision = precision_score(df["true"], df["pred"])
-recall = recall_score(df["true"], df["pred"])
-f1 = f1_score(df["true"], df["pred"])
+df = pandas.read_csv("salary-train.csv")
 
-print(accuracy)
-print(precision)
-print(recall)
-print(f1)
+df['FullDescription'] = df['FullDescription'].replace('[^a-zA-Z0-9]', ' ', regex=True)
 
-df = pandas.read_csv("scores.csv")
-print(df)
+vectorizer = TfidfVectorizer(min_df=5)
+X_train_text = vectorizer.fit_transform(df["FullDescription"])
 
-clf_names = df.columns[1:]
-scores = pandas.Series([roc_auc_score(df["true"], df[clf]) for clf in clf_names], index=clf_names)
+df['LocationNormalized'].fillna('nan', inplace=True)
+df['ContractTime'].fillna('nan', inplace=True)
 
-print(scores.sort_values(ascending=False).index[0])
+enc = DictVectorizer()
+X_train_cat = enc.fit_transform(df[["LocationNormalized", "ContractTime"]].to_dict("records"))
 
-pr_scores = []
-for clf in clf_names:
-    pr_curve = precision_recall_curve(df["true"], df[clf])
-    pr_scores.append(pr_curve[0][pr_curve[1] >= 0.7].max())
+X_train = scipy.sparse.hstack([X_train_text, X_train_cat])
 
-print(clf_names[np.argmax(pr_scores)])
+y_train = df["SalaryNormalized"]
+model = Ridge(alpha=1, random_state=241)
+model.fit(X_train, y_train)
+
+test = pandas.read_csv("salary-test-mini.csv")
+test['FullDescription'] = test['FullDescription'].replace('[^a-zA-Z0-9]', ' ', regex=True)
+
+X_test_text = vectorizer.transform(test["FullDescription"])
+X_test_cat = enc.transform(test[["LocationNormalized", "ContractTime"]].to_dict("records"))
+X_test = scipy.sparse.hstack([X_test_text, X_test_cat])
+
+y_test = model.predict(X_test)
+print(y_test[0])
+print(y_test[1])
